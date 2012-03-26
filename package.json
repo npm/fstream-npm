@@ -1,0 +1,14 @@
+{
+  "author": "Isaac Z. Schlueter <i@izs.me> (http://blog.izs.me/)",
+  "name": "fstream-npm",
+  "description": "fstream class for creating npm packages",
+  "version": "0.0.0",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/isaacs/fstream-npm.git"
+  },
+  "main": "./fstream-npm.js",
+  "dependencies": {
+    "fstream-ignore": "~0.0.2"
+  }
+}
