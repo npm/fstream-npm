@@ -107,11 +107,13 @@ Packer.prototype.applyIgnores = function (entry, partial, entryObj) {
     if (entry === ".bin") return false
 
     var shouldBundle = false
-    if (this.parent.bundled) {
+    if (this.parent && this.parent.bundled) {
       // only bundle if the parent doesn't already have it, and it's
       // not a devDependency.
       var dd = this.package && this.package.devDependencies
       shouldBundle = !dd || !dd.hasOwnProperty(entry)
+      shouldBundle = shouldBundle &&
+        this.parent.bundled.indexOf(entry) === -1
     } else {
       var bd = this.package && this.package.bundleDependencies
       var shouldBundle = bd && bd.indexOf(entry) !== -1
@@ -119,7 +121,9 @@ Packer.prototype.applyIgnores = function (entry, partial, entryObj) {
 
     if (shouldBundle) {
       this.bundled = this.bundled || []
-      this.bundled.push(entry)
+      if (this.bundled.indexOf(entry) === -1) {
+        this.bundled.push(entry)
+      }
     }
     return shouldBundle
   }
