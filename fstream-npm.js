@@ -23,6 +23,7 @@ function Packer (props) {
   Ignore.call(this, props)
 
   this.bundled = props.bundled
+  this.bundleLinks = props.bundleLinks
   this.package = props.package
 
   // in a node_modules folder, resolve symbolic links to
@@ -31,19 +32,10 @@ function Packer (props) {
   // console.error("follow?", this.path, props.follow)
 
   if (this === this.root ||
-      this.parent && this.parent.basename === "node_modules") {
-    // very likely a package.  try read the package.json asap.
-    this.on("stat", function () {
-      this.pause()
-      fs.readFile(this.path + "/package.json", function (er, data) {
-        if (er) {
-          // guessed wrong.  no harm.
-          return this.resume()
-        }
-        this.readRules(data, "package.json")
-        this.resume()
-      }.bind(this))
-    })
+      this.parent &&
+      this.parent.basename === "node_modules" &&
+      this.basename.charAt(0) !== ".") {
+    this.readBundledLinks()
   }
 
 
@@ -56,24 +48,44 @@ function Packer (props) {
   })
 }
 
-Packer.prototype.applyIgnores = function (entry, partial, entryObj) {
+Packer.prototype.readBundledLinks = function () {
+  if (this._paused) {
+    this.once("resume", this.addIgnoreFiles)
+    return
+  }
 
+  this.pause()
+  fs.readdir(this.path + "/node_modules", function (er, list) {
+    // no harm if there's no bundle
+    var l = list && list.length
+    if (er || l === 0) return this.resume()
+
+    var errState = null
+    , then = function then (er) {
+      if (errState) return
+      if (er) return errState = er, this.resume()
+      if (-- l === 0) return this.resume()
+    }.bind(this)
+
+    list.forEach(function (pkg) {
+      if (pkg.charAt(0) === ".") return then()
+      var pd = this.path + "/node_modules/" + pkg
+      fs.realpath(pd, function (er, rp) {
+        if (er) return then()
+        this.bundleLinks = this.bundleLinks || {}
+        this.bundleLinks[pkg] = rp
+        then()
+      }.bind(this))
+    }, this)
+  }.bind(this))
+}
+
+Packer.prototype.applyIgnores = function (entry, partial, entryObj) {
   // package.json files can never be ignored.
   if (entry === "package.json") return true
 
-  if (entryObj &&
-      entryObj.packageRoot &&
-      this.basename === "node_modules") {
-    // a bundled package.  Check if it should be here.
-    if (this.parent.parent &&
-        this.parent.parent.bundledVersions &&
-        this.parent.parent.bundledVersions === entryObj.package.version) {
-      return false
-    }
-    this.parent.bundledVersions = this.parent.bundledVersions || {}
-    this.parent.bundledVersions[entry] = entryObj.package.version
-    return true
-  }
+  // special rules.  see below.
+  if (entry === "node_modules") return true
 
   // some files are *never* allowed under any circumstances
   if (entry === ".git" ||
@@ -107,29 +119,34 @@ Packer.prototype.applyIgnores = function (entry, partial, entryObj) {
     if (entry === ".bin") return false
 
     var shouldBundle = false
-    if (this.parent && this.parent.bundled) {
-      // only bundle if the parent doesn't already have it, and it's
-      // not a devDependency.
-      var dd = this.package && this.package.devDependencies
-      shouldBundle = !dd || !dd.hasOwnProperty(entry)
-      shouldBundle = shouldBundle &&
-        this.parent.bundled.indexOf(entry) === -1
-    } else {
-      var bd = this.package && this.package.bundleDependencies
-      var shouldBundle = bd && bd.indexOf(entry) !== -1
+    // the package root.
+    var p = this.parent
+    // the package before this one.
+    var pp = p && p.parent
+
+    // if this entry has already been bundled, and is a symlink,
+    // and it is the *same* symlink as this one, then exclude it.
+    if (pp && pp.bundleLinks && this.bundleLinks &&
+        pp.bundleLinks[entry] === this.bundleLinks[entry]) {
+      return false
     }
 
-    if (shouldBundle) {
-      this.bundled = this.bundled || []
-      if (this.bundled.indexOf(entry) === -1) {
-        this.bundled.push(entry)
-      }
+    // since it's *not* a symbolic link, if we're *already* in a bundle,
+    // then we should include everything.
+    if (pp && pp.package) {
+      return true
     }
+
+    // only include it at this point if it's a bundleDependency
+    var bd = this.package && this.package.bundleDependencies
+    var shouldBundle = bd && bd.indexOf(entry) !== -1
+    // if we're not going to bundle it, then it doesn't count as a bundleLink
+    // if (this.bundleLinks && !shouldBundle) delete this.bundleLinks[entry]
     return shouldBundle
   }
   // if (this.bundled) return true
 
-  return Ignore.prototype.applyIgnores.call(this, entry, partial)
+  return Ignore.prototype.applyIgnores.call(this, entry, partial, entryObj)
 }
 
 Packer.prototype.addIgnoreFiles = function () {
@@ -148,12 +165,19 @@ Packer.prototype.addIgnoreFiles = function () {
   Ignore.prototype.addIgnoreFiles.call(this)
 }
 
+
 Packer.prototype.readRules = function (buf, e) {
   if (e !== "package.json") {
     return Ignore.prototype.readRules.call(this, buf, e)
   }
 
   var p = this.package = JSON.parse(buf.toString())
+
+  if (this === this.root) {
+    this.bundleLinks = this.bundleLinks || {}
+    this.bundleLinks[p.name] = this._path
+  }
+
   this.packageRoot = true
   this.emit("package", p)
 
@@ -177,8 +201,8 @@ Packer.prototype.getChildProps = function (stat) {
   props.package = this.package
 
   props.bundled = this.bundled && this.bundled.slice(0)
-  props.bundledVersions = this.bundledVersions &&
-    Object.create(this.bundledVersions)
+  props.bundleLinks = this.bundleLinks &&
+    Object.create(this.bundleLinks)
 
   // Directories have to be read as Packers
   // otherwise fstream.Reader will create a DirReader instead.
