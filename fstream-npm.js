@@ -131,9 +131,31 @@ Packer.prototype.getChildProps = function (stat) {
 }
 
 
+var order =
+  [ "package.json"
+  , ".npmignore"
+  , ".gitignore"
+  , /^README(\.md)?$/
+  , "LICENCE"
+  , "LICENSE"
+  , /\.js$/ ]
+
 Packer.prototype.sort = function (a, b) {
-  if (a === "package.json") return -1
-  if (b === "package.json") return 1
+  for (var i = 0, l = order.length; i < l; i ++) {
+    var o = order[i]
+    if (typeof o === "string") {
+      if (a === o) return -1
+      if (b === o) return 1
+    } else {
+      if (a.match(o)) return -1
+      if (b.match(o)) return 1
+    }
+  }
+
+  // deps go in the back
+  if (a === "node_modules") return 1
+  if (b === "node_modules") return -1
+
   return Ignore.prototype.sort.call(this, a, b)
 }
 
