@@ -1,6 +1,7 @@
 var Ignore = require("fstream-ignore")
 , inherits = require("inherits")
 , path = require("path")
+, fs = require("fs")
 
 module.exports = Packer
 
@@ -29,6 +30,22 @@ function Packer (props) {
   props.follow = this.follow = this.basename === "node_modules"
   // console.error("follow?", this.path, props.follow)
 
+  if (this === this.root ||
+      this.parent && this.parent.basename === "node_modules") {
+    // very likely a package.  try read the package.json asap.
+    this.on("stat", function () {
+      this.pause()
+      fs.readFile(this.path + "/package.json", function (er, data) {
+        if (er) {
+          // guessed wrong.  no harm.
+          return this.resume()
+        }
+        this.readRules(data, "package.json")
+        this.resume()
+      }.bind(this))
+    })
+  }
+
 
   this.on("entryStat", function (entry, props) {
     // files should *always* get into tarballs
@@ -39,26 +56,22 @@ function Packer (props) {
   })
 }
 
-Packer.prototype.applyIgnores = function (entry, partial) {
+Packer.prototype.applyIgnores = function (entry, partial, entryObj) {
 
   // package.json files can never be ignored.
   if (entry === "package.json") return true
 
-  // in a node_modules folder, we only include bundled dependencies
-  // also, prevent packages in node_modules from being affected
-  // by rules set in the containing package, so that
-  // bundles don't get busted.
-  // Also, once in a bundle, everything is installed as-is
-  if (this.bundled) return true
-  if (this.basename === "node_modules") {
-    if (entry.indexOf("/") === -1) {
-      if (this.bundled) return true
-      var bd = this.package && this.package.bundleDependencies
-      var shouldBundle = bd && bd.indexOf(entry) !== -1
-      // console.error("should bundle?", shouldBundle, this.package)
-      this.bundled = shouldBundle
-      return shouldBundle
+  if (entryObj &&
+      entryObj.packageRoot &&
+      this.basename === "node_modules") {
+    // a bundled package.  Check if it should be here.
+    if (this.parent.parent &&
+        this.parent.parent.bundledVersions &&
+        this.parent.parent.bundledVersions === entryObj.package.version) {
+      return false
     }
+    this.parent.bundledVersions = this.parent.bundledVersions || {}
+    this.parent.bundledVersions[entry] = entryObj.package.version
     return true
   }
 
@@ -76,6 +89,41 @@ Packer.prototype.applyIgnores = function (entry, partial) {
     ) {
     return false
   }
+
+  // in a node_modules folder, we only include bundled dependencies
+  // also, prevent packages in node_modules from being affected
+  // by rules set in the containing package, so that
+  // bundles don't get busted.
+  // Also, once in a bundle, everything is installed as-is
+  // To prevent infinite cycles in the case of cyclic deps that are
+  // linked with npm link, even in a bundle, deps are only bundled
+  // if they're not already present at a higher level.
+  if (this.basename === "node_modules") {
+    // bubbling up.  stop here and allow anything the bundled pkg allows
+    if (entry.indexOf("/") !== -1) return true
+
+    // never include the .bin.  It's typically full of platform-specific
+    // stuff like symlinks and .cmd files anyway.
+    if (entry === ".bin") return false
+
+    var shouldBundle = false
+    if (this.parent.bundled) {
+      // only bundle if the parent doesn't already have it, and it's
+      // not a devDependency.
+      var dd = this.package && this.package.devDependencies
+      shouldBundle = !dd || !dd.hasOwnProperty(entry)
+    } else {
+      var bd = this.package && this.package.bundleDependencies
+      var shouldBundle = bd && bd.indexOf(entry) !== -1
+    }
+
+    if (shouldBundle) {
+      this.bundled = this.bundled || []
+      this.bundled.push(entry)
+    }
+    return shouldBundle
+  }
+  // if (this.bundled) return true
 
   return Ignore.prototype.applyIgnores.call(this, entry, partial)
 }
@@ -124,7 +172,9 @@ Packer.prototype.getChildProps = function (stat) {
 
   props.package = this.package
 
-  props.bundled = this.bundled
+  props.bundled = this.bundled && this.bundled.slice(0)
+  props.bundledVersions = this.bundledVersions &&
+    Object.create(this.bundledVersions)
 
   // Directories have to be read as Packers
   // otherwise fstream.Reader will create a DirReader instead.
@@ -188,7 +238,8 @@ Packer.prototype.emitEntry = function (entry) {
   }
 
   // skip over symbolic links
-  if (this.basename !== "node_modules" && entry.type === "SymbolicLink") {
+  if (entry.type === "SymbolicLink") {
+    entry.abort()
     return
   }
 
