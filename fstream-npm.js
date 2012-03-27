@@ -11,41 +11,51 @@ function Packer (props) {
     return new Packer(props)
   }
 
+  if (typeof props === "string") {
+    props = { path: props }
+  }
+
   props.ignoreFiles = [ ".npmignore",
                         ".gitignore",
                         "package.json" ]
 
   Ignore.call(this, props)
 
-  // if there is a .gitignore, then we're going to
-  // rename it to .npmignore in the output.
-  this.on("entry", function (entry) {
-    if (entry.basename === ".gitignore") {
-      entry.basename = ".npmignore"
-      entry.path = path.resolve(entry.dirname, entry.basename)
-    }
+  this.package = props.package
+
+  // in a node_modules folder, resolve symbolic links to
+  // bundled dependencies when creating the package.
+  props.follow = this.follow = this.basename === "node_modules"
+  // console.error("follow?", this.path, props.follow)
+
+
+  this.on("entryStat", function (entry, props) {
+    // files should *always* get into tarballs
+    // in a user-writable state, even if they're
+    // being installed from some wackey vm-mounted
+    // read-only filesystem.
+    entry.mode = props.mode = props.mode | 0200
   })
-
-  // when reading the contents of node_modules, exclude
-  // everything that isn't a bundleDependency
-  if (this.basename === "node_modules") {
-    this.on("entryStat", function (entry, stat) {
-      // XXX: do fancy symlink bundling crap
-      var bd = this.package && this.package.bundleDependencies
-      var shouldBundle = bd && bd.indexOf(entry.basename) !== -1
-      if (!shouldBundle) entry.abort()
-    })
-
-    // prevent packages in node_modules from being affected
-    // by rules set in the containing package, so that
-    // bundles don't get busted.
-    this.applyIgnores = function () { return true }
-  }
 }
 
 Packer.prototype.applyIgnores = function (entry, partial) {
+
   // package.json files can never be ignored.
   if (entry === "package.json") return true
+
+  // in a node_modules folder, we only include bundled dependencies
+  // also, prevent packages in node_modules from being affected
+  // by rules set in the containing package, so that
+  // bundles don't get busted.
+  if (this.basename === "node_modules") {
+    if (entry.indexOf("/") === -1) {
+      var bd = this.package && this.package.bundleDependencies
+      var shouldBundle = bd && bd.indexOf(entry) !== -1
+      // console.error("should bundle?", shouldBundle, this.package)
+      return shouldBundle
+    }
+    return true
+  }
 
   // some files are *never* allowed under any circumstances
   if (entry === ".git" ||
@@ -54,19 +64,19 @@ Packer.prototype.applyIgnores = function (entry, partial) {
       entry === "CVS" ||
       entry === ".svn" ||
       entry === ".hg" ||
-      entry.match(/^\..*\.swp/) ||
+      entry.match(/^\..*\.swp$/) ||
       entry === ".DS_Store" ||
       entry.match(/^\._/) ||
-      entry === "npm-debug.log" ||
-      entry === "" ||
-      entry.charAt(0) === "/" ) {
+      entry === "npm-debug.log"
+    ) {
     return false
   }
 
-  return Ignore.prototype.applyIgnores.call(entry, partial)
+  return Ignore.prototype.applyIgnores.call(this, entry, partial)
 }
 
-Packer.prototype.addIgnoreFiles = function (entries) {
+Packer.prototype.addIgnoreFiles = function () {
+  var entries = this.entries
   // if there's a .npmignore, then we do *not* want to
   // read the .gitignore.
   if (-1 !== entries.indexOf(".npmignore")) {
@@ -76,7 +86,9 @@ Packer.prototype.addIgnoreFiles = function (entries) {
     }
   }
 
-  Ignore.prototype.addIgnoreFiles.call(this, entries)
+  this.entries = entries
+
+  Ignore.prototype.addIgnoreFiles.call(this)
 }
 
 Packer.prototype.readRules = function (buf, e) {
@@ -104,13 +116,72 @@ Packer.prototype.readRules = function (buf, e) {
 
 Packer.prototype.getChildProps = function (stat) {
   var props = Ignore.prototype.getChildProps.call(this, stat)
+
   props.package = this.package
+
+  // Directories have to be read as Packers
+  // otherwise fstream.Reader will create a DirReader instead.
+  if (stat.isDirectory()) {
+    props.type = this.constructor
+  }
+
+  // only follow symbolic links directly in the node_modules folder.
+  props.follow = false
   return props
 }
 
+
+Packer.prototype.sort = function (a, b) {
+  if (a === "package.json") return -1
+  if (b === "package.json") return 1
+  return Ignore.prototype.sort.call(this, a, b)
+}
+
+
+
 Packer.prototype.emitEntry = function (entry) {
+  if (this._paused) {
+    this.once("resume", this.emitEntry.bind(this, entry))
+    return
+  }
+
+  // if there is a .gitignore, then we're going to
+  // rename it to .npmignore in the output.
+  if (entry.basename === ".gitignore") {
+    entry.basename = ".npmignore"
+    entry.path = path.resolve(entry.dirname, entry.basename)
+  }
+
+  // skip over symbolic links if we're not in the node_modules
+  // folder doing bundle whatevers
+  if (this.basename !== "node_modules" && entry.type === "SymbolicLink") {
+    return
+  }
+
+  if (entry.type !== "Directory") {
+    // make it so that the folder in the tarball is named "package"
+    var h = path.dirname((entry.root || entry).path)
+    , t = entry.path.substr(h.length + 1).replace(/^[^\/\\]+/, "package")
+    , p = h + "/" + t
+
+    entry.path = p
+    entry.dirname = path.dirname(p)
+    return Ignore.prototype.emitEntry.call(this, entry)
+  }
+
+  // we don't want empty directories to show up in package
+  // tarballs.
   // don't emit entry events for dirs, but still walk through
-  // and read them.
-  if (entry.type === "Directory") return
-  Ignore.prototype.emitEntry.call(this, entry)
+  // and read them.  This means that we need to proxy up their
+  // entry events so that those entries won't be missed, since
+  // .pipe() doesn't do anythign special with "child" events, on
+  // with "entry" events.
+  var me = this
+  entry.on("entry", function (e) {
+    if (e.parent === entry) {
+      e.parent = me
+      me.emit("entry", e)
+    }
+  })
+  entry.on("package", this.emit.bind(this, "package"))
 }
