@@ -8,5 +8,5 @@ P({ path: "./" })
     console.error("ignoreFile", e)
   })
   .on("entry", function (e) {
-    console.error(e.constructor.name, e.path.substr(e.root.path.length + 1))
+    console.error(e.constructor.name, e.path.substr(e.root.dirname.length + 1))
   })
