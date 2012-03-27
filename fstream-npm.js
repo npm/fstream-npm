@@ -23,29 +23,15 @@ function Packer (props) {
   Ignore.call(this, props)
 
   this.bundled = props.bundled
+  this.bundledVersions = props.bundledVersions &&
+    Object.create(props.bundledVersions) || {}
+
   this.package = props.package
 
   // in a node_modules folder, resolve symbolic links to
   // bundled dependencies when creating the package.
   props.follow = this.follow = this.basename === "node_modules"
   // console.error("follow?", this.path, props.follow)
-
-  if (this === this.root ||
-      this.parent && this.parent.basename === "node_modules") {
-    // very likely a package.  try read the package.json asap.
-    this.on("stat", function () {
-      this.pause()
-      fs.readFile(this.path + "/package.json", function (er, data) {
-        if (er) {
-          // guessed wrong.  no harm.
-          return this.resume()
-        }
-        this.readRules(data, "package.json")
-        this.resume()
-      }.bind(this))
-    })
-  }
-
 
   this.on("entryStat", function (entry, props) {
     // files should *always* get into tarballs
@@ -54,26 +40,25 @@ function Packer (props) {
     // read-only filesystem.
     entry.mode = props.mode = props.mode | 0200
   })
+
+  if (this.root === this ||
+      this.parent && this.parent.basename === "node_modules") {
+    this.on("_stat", function () {
+      this.pause()
+      fs.readFile(this.path + "/package.json", function (er, buf) {
+        if (er) return this.resume()
+        this.readRules(buf, "package.json")
+        this.bundledVersions[this.package.name] = this.package.version
+        this.resume()
+      }.bind(this))
+    })
+  }
 }
 
-Packer.prototype.applyIgnores = function (entry, partial, entryObj) {
+Packer.prototype.applyIgnores = function (entry, partial, e) {
 
   // package.json files can never be ignored.
   if (entry === "package.json") return true
-
-  if (entryObj &&
-      entryObj.packageRoot &&
-      this.basename === "node_modules") {
-    // a bundled package.  Check if it should be here.
-    if (this.parent.parent &&
-        this.parent.parent.bundledVersions &&
-        this.parent.parent.bundledVersions === entryObj.package.version) {
-      return false
-    }
-    this.parent.bundledVersions = this.parent.bundledVersions || {}
-    this.parent.bundledVersions[entry] = entryObj.package.version
-    return true
-  }
 
   // some files are *never* allowed under any circumstances
   if (entry === ".git" ||
@@ -107,23 +92,40 @@ Packer.prototype.applyIgnores = function (entry, partial, entryObj) {
     if (entry === ".bin") return false
 
     var shouldBundle = false
-    if (this.parent.bundled) {
-      // only bundle if the parent doesn't already have it, and it's
-      // not a devDependency.
+    if (this.bundled) {
+      // only bundle if the parent doesn't already have it, and
+      // it's not a devDependency.
+      //
+      // *do* re-include it if the parent's version is different
+      // from this one.  however, that requires reading the
+      // package.json.
       var dd = this.package && this.package.devDependencies
       shouldBundle = !dd || !dd.hasOwnProperty(entry)
+      // Note: we may cancel this later.
     } else {
       var bd = this.package && this.package.bundleDependencies
-      var shouldBundle = bd && bd.indexOf(entry) !== -1
+      shouldBundle = bd && bd.indexOf(entry) !== -1
     }
 
     if (shouldBundle) {
       this.bundled = this.bundled || []
-      this.bundled.push(entry)
+      if (e && e.packageRoot) {
+        // have already read the package.json file.
+        this.bundledVersions = this.bundledVersions || {}
+        if (this.bundledVersions[entry] === e.package.version) {
+          var i = this.bundled.indexOf(entry)
+          this.bundled.splice(i, 1)
+          return false
+        }
+        this.bundledVersions[entry] = e.package.version
+        return true
+      }
+      if (-1 === this.bundled.indexOf(entry)) {
+        this.bundled.push(entry)
+      }
     }
     return shouldBundle
   }
-  // if (this.bundled) return true
 
   return Ignore.prototype.applyIgnores.call(this, entry, partial)
 }
@@ -149,6 +151,9 @@ Packer.prototype.readRules = function (buf, e) {
     return Ignore.prototype.readRules.call(this, buf, e)
   }
 
+  // already got it.
+  if (this.packageRoot) return []
+
   var p = this.package = JSON.parse(buf.toString())
   this.packageRoot = true
   this.emit("package", p)
@@ -173,8 +178,7 @@ Packer.prototype.getChildProps = function (stat) {
   props.package = this.package
 
   props.bundled = this.bundled && this.bundled.slice(0)
-  props.bundledVersions = this.bundledVersions &&
-    Object.create(this.bundledVersions)
+  props.bundledVersions = this.bundledVersions
 
   // Directories have to be read as Packers
   // otherwise fstream.Reader will create a DirReader instead.
