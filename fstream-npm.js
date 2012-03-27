@@ -181,8 +181,13 @@ Packer.prototype.emitEntry = function (entry) {
     entry.path = path.resolve(entry.dirname, entry.basename)
   }
 
-  // skip over symbolic links if we're not in the node_modules
-  // folder doing bundle whatevers
+  // all *.gyp files are renamed to binding.gyp for node-gyp
+  if (entry.basename.match(/\.gyp$/)) {
+    entry.basename = "binding.gyp"
+    entry.path = path.resolve(entry.dirname, entry.basename)
+  }
+
+  // skip over symbolic links
   if (this.basename !== "node_modules" && entry.type === "SymbolicLink") {
     return
   }
