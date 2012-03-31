@@ -1,4 +1,5 @@
 var Ignore = require("fstream-ignore")
+, minimatch = require("minimatch")
 , inherits = require("inherits")
 , path = require("path")
 , fs = require("fs")
@@ -139,10 +140,9 @@ Packer.prototype.applyIgnores = function (entry, partial, entryObj) {
 
     // only include it at this point if it's a bundleDependency
     var bd = this.package && this.package.bundleDependencies
-    var shouldBundle = bd && bd.indexOf(entry) !== -1
-    // if we're not going to bundle it, then it doesn't count as a bundleLink
-    // if (this.bundleLinks && !shouldBundle) delete this.bundleLinks[entry]
-    return shouldBundle
+    if (!bd) return false
+    if (typeof bd === 'string') return minimatch(entry, bd)
+    return bd.indexOf(entry) !== -1
   }
   // if (this.bundled) return true
 
