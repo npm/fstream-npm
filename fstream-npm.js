@@ -171,7 +171,13 @@ Packer.prototype.readRules = function (buf, e) {
     return Ignore.prototype.readRules.call(this, buf, e)
   }
 
-  var p = this.package = JSON.parse(buf.toString())
+  try {
+    var p = this.package = JSON.parse(buf.toString())
+  } catch (er) {
+    er.file = path.resolve(this.path, e)
+    this.error(er)
+    return
+  }
 
   if (this === this.root) {
     this.bundleLinks = this.bundleLinks || {}
