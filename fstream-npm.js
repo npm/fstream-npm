@@ -268,7 +268,9 @@ Packer.prototype.emitEntry = function (entry) {
   }
 
   // all *.gyp files are renamed to binding.gyp for node-gyp
-  if (entry.basename.match(/\.gyp$/)) {
+  // but only when they are in the same folder as a package.json file.
+  if (entry.basename.match(/\.gyp$/) &&
+      this.entries.indexOf("package.json") !== -1) {
     entry.basename = "binding.gyp"
     entry.path = path.resolve(entry.dirname, entry.basename)
   }
