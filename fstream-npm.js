@@ -171,8 +171,12 @@ Packer.prototype.readRules = function (buf, e) {
     return Ignore.prototype.readRules.call(this, buf, e)
   }
 
+  buf = buf.toString().trim()
+
+  if (buf.length === 0) return
+
   try {
-    var p = this.package = JSON.parse(buf.toString())
+    var p = this.package = JSON.parse(buf)
   } catch (er) {
     er.file = path.resolve(this.path, e)
     this.error(er)
