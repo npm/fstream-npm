@@ -10,6 +10,7 @@
   "main": "./fstream-npm.js",
   "dependencies": {
     "fstream-ignore": "~0.0.5",
+    "minimatch": "~0.2.4",
     "inherits": ""
   }
 }
