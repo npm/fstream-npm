@@ -11,5 +11,6 @@
   "dependencies": {
     "fstream-ignore": "~0.0.5",
     "inherits": ""
-  }
+  },
+  "license": "BSD"
 }
