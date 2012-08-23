@@ -1,3 +1,4 @@
+[![build status](https://secure.travis-ci.org/isaacs/fstream-npm.png)](http://travis-ci.org/isaacs/fstream-npm)
 # fstream-npm
 
 This is an fstream DirReader class that will read a directory and filter
