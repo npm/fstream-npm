@@ -190,7 +190,7 @@ Packer.prototype.readRules = function (buf, e) {
   } catch (er) {
     er.file = path.resolve(this.path, e)
     this.error(er)
-    return
+    return []
   }
 
   if (this === this.root) {
