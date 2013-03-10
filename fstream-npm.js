@@ -188,8 +188,7 @@ Packer.prototype.readRules = function (buf, e) {
   try {
     var p = this.package = JSON.parse(buf)
   } catch (er) {
-    er.file = path.resolve(this.path, e)
-    this.error(er)
+    // just pretend it's a normal old file, not magic at all.
     return []
   }
 
