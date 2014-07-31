@@ -9,8 +9,8 @@
   },
   "main": "./fstream-npm.js",
   "dependencies": {
-    "fstream-ignore": "~0.0",
+    "fstream-ignore": "^1.0.0",
     "inherits": "2"
   },
-  "license": "BSD"
+  "license": "ISC"
 }
