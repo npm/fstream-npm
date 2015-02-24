@@ -7,10 +7,16 @@
     "type": "git",
     "url": "git://github.com/isaacs/fstream-npm.git"
   },
+  "scripts": {
+    "test": "standard"
+  },
   "main": "./fstream-npm.js",
   "dependencies": {
     "fstream-ignore": "^1.0.0",
     "inherits": "2"
+  },
+  "devDependencies": {
+    "standard": "^2.7.3"
   },
   "license": "ISC"
 }
