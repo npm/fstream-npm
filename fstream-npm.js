@@ -155,6 +155,12 @@ Packer.prototype.applyIgnores = function (entry, partial, entryObj) {
 
     // only include it at this point if it's a bundleDependency
     var bd = this.package && this.package.bundleDependencies
+
+    if (bd && !Array.isArray(bd)) {
+      throw new Error(this.package.name + '\'s `bundledDependencies` should ' +
+                      'be an array')
+    }
+
     var shouldBundle = bd && bd.indexOf(entry) !== -1
     // if we're not going to bundle it, then it doesn't count as a bundleLink
     // if (this.bundleLinks && !shouldBundle) delete this.bundleLinks[entry]
