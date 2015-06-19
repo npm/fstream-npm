@@ -16,7 +16,7 @@
     "inherits": "2"
   },
   "devDependencies": {
-    "standard": "^2.7.3"
+    "standard": "^4.3.1"
   },
   "license": "ISC"
 }
