@@ -30,22 +30,40 @@ test('setup', function (t) {
 
 var included = [
   'package.json',
-  'elf.js'
+  'elf.js',
+  join('deps', 'foo', 'config', 'config.gypi')
 ]
 
 test('follows npm package ignoring rules', function (t) {
   var subject = new Packer({ path: pkg, type: 'Directory', isDirectory: true })
+  var filenames = []
   subject.on('entry', function (entry) {
     t.equal(entry.type, 'File', 'only files in this package')
-    var filename = entry.basename
-    t.ok(
-      included.indexOf(filename) > -1,
-      filename + ' is included'
-    )
+
+    // include relative path in filename
+    var filename = entry._path.slice(entry.root._path.length + 1)
+
+    filenames.push(filename)
   })
   // need to do this so fstream doesn't explode when files are removed from
   // under it
-  subject.on('end', function () { t.end() })
+  subject.on('end', function () {
+    // ensure we get *exactly* the results we expect by comparing in both
+    // directions
+    filenames.forEach(function (filename) {
+      t.ok(
+        included.indexOf(filename) > -1,
+        filename + ' is included'
+      )
+    })
+    included.forEach(function (filename) {
+      t.ok(
+        filenames.indexOf(filename) > -1,
+        filename + ' is not included'
+      )
+    })
+    t.end()
+  })
 })
 
 test('cleanup', function (t) {
@@ -76,6 +94,13 @@ function setup () {
   fs.writeFileSync(
     join(build, 'config.gypi'),
     "i_wont_be_included_by_fstream='with any luck'"
+  )
+
+  var depscfg = join(pkg, 'deps', 'foo', 'config')
+  mkdirp.sync(depscfg)
+  fs.writeFileSync(
+    join(depscfg, 'config.gypi'),
+    "i_will_be_included_by_fstream='with any luck'"
   )
 
   fs.writeFileSync(
