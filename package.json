@@ -5,7 +5,7 @@
   "version": "1.0.5",
   "repository": {
     "type": "git",
-    "url": "git://github.com/isaacs/fstream-npm.git"
+    "url": "https://github.com/npm/fstream-npm.git"
   },
   "scripts": {
     "test": "standard && tap test/*.js"
