@@ -1,5 +1,5 @@
 var fs = require('graceful-fs')
-var join = require('path').join
+var path = require('path')
 
 var mkdirp = require('mkdirp')
 var rimraf = require('rimraf')
@@ -7,7 +7,7 @@ var test = require('tap').test
 
 var Packer = require('..')
 
-var pkg = join(__dirname, 'test-package')
+var pkg = path.join(__dirname, 'test-package')
 
 var elfJS = function () {/*
 module.exports = function () {
@@ -29,35 +29,42 @@ test('setup', function (t) {
 var included = [
   'package.json',
   'elf.js',
-  join('deps', 'foo', 'config', 'config.gypi')
+  'main.gyp',
+  path.join('deps', 'foo', 'config', 'config.gypi')
 ]
 
 test('follows npm package ignoring rules', function (t) {
   var subject = new Packer({ path: pkg, type: 'Directory', isDirectory: true })
-  var filenames = []
+  var filepaths = []
+  var destpaths = []
   subject.on('entry', function (entry) {
     t.equal(entry.type, 'File', 'only files in this package')
 
-    // include relative path in filename
-    var filename = entry._path.slice(entry.root._path.length + 1)
+    // include relative path in filepath
+    var filepath = entry._path.slice(entry.root._path.length + 1)
 
-    filenames.push(filename)
+    filepaths.push(filepath)
+    destpaths.push(path.join(path.dirname(filepath), path.basename(entry.path)))
   })
   // need to do this so fstream doesn't explode when files are removed from
   // under it
   subject.on('end', function () {
     // ensure we get *exactly* the results we expect by comparing in both
     // directions
-    filenames.forEach(function (filename) {
+    filepaths.forEach(function (filepath) {
       t.ok(
-        included.indexOf(filename) > -1,
-        filename + ' is included'
+        included.indexOf(filepath) > -1,
+        filepath + ' is included'
+      )
+      t.ok(
+        destpaths.indexOf(filepath) > -1,
+        filepath + ' exists in destination'
       )
     })
-    included.forEach(function (filename) {
+    included.forEach(function (filepath) {
       t.ok(
-        filenames.indexOf(filename) > -1,
-        filename + ' is not included'
+        filepath.indexOf(filepath) > -1,
+        filepath + ' is not included'
       )
     })
     t.end()
@@ -73,60 +80,65 @@ function setup () {
   rimraf.sync(pkg)
   mkdirp.sync(pkg)
   fs.writeFileSync(
-    join(pkg, 'package.json'),
+    path.join(pkg, 'package.json'),
     JSON.stringify(json, null, 2)
   )
 
   fs.writeFileSync(
-    join(pkg, 'elf.js'),
+    path.join(pkg, 'elf.js'),
     elfJS
   )
 
   fs.writeFileSync(
-    join(pkg, '.npmrc'),
+    path.join(pkg, '.npmrc'),
     'packaged=false'
   )
 
   fs.writeFileSync(
-    join(pkg, '.npmignore'),
+    path.join(pkg, '.npmignore'),
     '.npmignore\ndummy\npackage.json'
   )
 
   fs.writeFileSync(
-    join(pkg, 'dummy'),
+    path.join(pkg, 'dummy'),
     'foo'
   )
 
-  var buildDir = join(pkg, 'build')
+  fs.writeFileSync(
+    path.join(pkg, 'main.gyp'),
+    'main'
+  )
+
+  var buildDir = path.join(pkg, 'build')
   mkdirp.sync(buildDir)
   fs.writeFileSync(
-    join(buildDir, 'config.gypi'),
+    path.join(buildDir, 'config.gypi'),
     "i_wont_be_included_by_fstream='with any luck'"
   )
 
-  var depscfg = join(pkg, 'deps', 'foo', 'config')
+  var depscfg = path.join(pkg, 'deps', 'foo', 'config')
   mkdirp.sync(depscfg)
   fs.writeFileSync(
-    join(depscfg, 'config.gypi'),
+    path.join(depscfg, 'config.gypi'),
     "i_will_be_included_by_fstream='with any luck'"
   )
 
   fs.writeFileSync(
-    join(buildDir, 'npm-debug.log'),
+    path.join(buildDir, 'npm-debug.log'),
     '0 lol\n'
   )
 
-  var gitDir = join(pkg, '.git')
+  var gitDir = path.join(pkg, '.git')
   mkdirp.sync(gitDir)
   fs.writeFileSync(
-    join(gitDir, 'gitstub'),
+    path.join(gitDir, 'gitstub'),
     "won't fool git, also won't be included by fstream"
   )
 
-  var historyDir = join(pkg, 'node_modules/history')
+  var historyDir = path.join(pkg, 'node_modules/history')
   mkdirp.sync(historyDir)
   fs.writeFileSync(
-    join(historyDir, 'README.md'),
+    path.join(historyDir, 'README.md'),
     "please don't include me"
   )
 }
