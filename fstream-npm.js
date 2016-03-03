@@ -88,6 +88,22 @@ Packer.prototype.readBundledLinks = function () {
   }.bind(this))
 }
 
+Packer.prototype.filterEntries = function () {
+  // Because package.json's files array works the way it does, we have to
+  // filter once, get rid of the entries, and filter again if we want
+  // .{npm,git}ignore to override the files array.
+  var maybeRet = Ignore.prototype.filterEntries.call(this)
+  if (this.ignoreRules != null) {
+    this.ignoreRules = this.ignoreRules.filter(function (mm) {
+      console.log(mm)
+      return mm.ignoreFile !== 'package.json'
+    })
+    return Ignore.prototype.filterEntries.call(this)
+  } else {
+    return maybeRet
+  }
+}
+
 Packer.prototype.applyIgnores = function (entry, partial, entryObj) {
   if (!entryObj || entryObj.type !== 'Directory') {
     // package.json files can never be ignored.
