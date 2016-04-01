@@ -13,7 +13,8 @@
   "main": "./fstream-npm.js",
   "dependencies": {
     "fstream-ignore": "^1.0.0",
-    "inherits": "2"
+    "inherits": "2",
+    "minimatch": "^3.0.0"
   },
   "devDependencies": {
     "graceful-fs": "^4.1.2",
