@@ -183,8 +183,11 @@ Packer.prototype.applyIgnores = function (entry, partial, entryObj) {
   var includeFile = Ignore.prototype.applyIgnores.call(this, entry, partial, entryObj)
   if (!partial && this.pkgRules && includeFile) {
     var filesMatched = this.pkgRules.some(function (r) {
-      return (r.match('/' + entry) ||
-              r.match(entry))
+      var ruleMatched = (r.match('/' + entry) || r.match(entry))
+      if (ruleMatched) {
+        r.matchedExistingFile = true
+      }
+      return ruleMatched
     })
     return filesMatched
   }
@@ -242,10 +245,11 @@ Packer.prototype.readRules = function (buf, e) {
 
   var mmopts = { matchBase: true, dot: true }
   this.pkgRules = p.files.map(function (f) {
-    return [new Minimatch(f, mmopts),
-            new Minimatch(f.replace(/\/+$/, '') + '/**', mmopts)]
-  }).reduce(function (acc, arr) { return acc.concat(arr) }, [])
-
+    var f2 = f.replace('\/+$/', '')
+    var globRule = new Minimatch('{' + f2 + ',' + f2 + '/**}')
+    globRule.originalPattern = f
+    return globRule
+  })
   return []
 }
 
