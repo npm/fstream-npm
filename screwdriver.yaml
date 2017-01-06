@@ -1,0 +1,59 @@
+---
+# Workflow list definition
+# This list describes the order that the Jobs execute. The "main" Job is always 
+# executed first, followed in order of the Jobs listed in this Workflow block.
+workflow:
+  # We define the workflow where the "publish" Job is started after the "main" Job.
+  - publish
+
+
+# Shared definition block
+# This is where you would define any attributes that all your jobs will 
+# inherit.
+shared:
+  # We specify a common NodeJS Docker image for our Jobs. It takes the form of
+  # "repo_name:tag_label", where the "tag_label" is optional.
+  # Docker image - https://hub.docker.com/r/library/node/
+  image: node:6
+
+# Jobs definition block
+# All pipelines have "main" by default, and is implicitly defined.
+jobs:
+  # We explicitly define "main" in our configuration so that it does what we want
+  # it to do.
+  main:
+    # Steps is the ordered list of commands to execute.
+    # Each step takes the form "step_name: command_to_run". The "step_name" is a
+    # convient label to reference it by. The "command_to_run" is the single 
+    # command that is executed during the step.
+    steps:
+      # Our "install" step is first in the list. It installs your NodeJS dependencies
+      # NPM reference document - https://docs.npmjs.com/cli/install
+      - install: npm install
+      # The next step is "test". It tests your NodeJS package
+      # NPM reference document - https://docs.npmjs.com/cli/test
+      - test: npm test
+  # We define another Job called "publish". In this stage of the pipeline, we intend
+  # on publishing our package to the NPM Registry.
+  publish:
+    steps:
+      # "set_access" is the first step that is executed. We want the community to use
+      # our package, so we enable publicly accessible
+      # NPM reference document - https://docs.npmjs.com/cli/access
+      - set_access: npm config set access public > /dev/null 2>&1
+      # "set_token" sets our NPM auth token in the NPM config. This is how the build
+      # will authenticate with the NPM Registry.
+      # Blog article reference - http://blog.npmjs.org/post/118393368555/deploying-with-npm-private-modules
+      - set_token: npm config set //registry.npmjs.org/:_authToken $NPM_TOKEN > /dev/null 2>&1
+      # In "publish_npm", we perform the actual publishing
+      # NPM reference document - https://docs.npmjs.com/cli/publish
+      - publish_npm: npm publish
+    # Allowed secrets block.
+    # This list of secrets that are explicitly allowed to be exposed during the
+    # "publish" Job.
+    # Screwdriver document reference - http://docs.screwdriver.cd/user-guide/configuration/secrets/
+    secrets:
+      # We require our NPM Token to be available so that we can publish our package
+      # to the NPM Registry. Our secret is stored as "NPM_TOKEN", and is accessible
+      # in the build as an environment variable with the same name
+      - NPM_TOKEN
