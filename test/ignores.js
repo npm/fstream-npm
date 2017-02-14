@@ -15,10 +15,17 @@ module.exports = function () {
 }
 */}.toString().split('\n').slice(1, -1).join()
 
+var subJS = function () {/*
+module.exports = function () {
+  console.log("i'm a browser elf in a tree")
+}
+*/}.toString().split('\n').slice(1, -1).join()
+
 var json = {
   'name': 'test-package',
   'version': '3.1.4',
-  'main': 'elf.js'
+  'main': 'elf.js',
+  'browser': 'subdub.js'
 }
 
 test('setup', function (t) {
@@ -29,6 +36,7 @@ test('setup', function (t) {
 var included = [
   'package.json',
   'elf.js',
+  'subdub.js',
   join('deps', 'foo', 'config', 'config.gypi')
 ]
 
@@ -83,13 +91,18 @@ function setup () {
   )
 
   fs.writeFileSync(
+    join(pkg, 'subdub.js'),
+    subJS
+  )
+
+  fs.writeFileSync(
     join(pkg, '.npmrc'),
     'packaged=false'
   )
 
   fs.writeFileSync(
     join(pkg, '.npmignore'),
-    '.npmignore\ndummy\npackage.json'
+    '.npmignore\ndummy\npackage.json\nsub*.js\n'
   )
 
   fs.writeFileSync(
