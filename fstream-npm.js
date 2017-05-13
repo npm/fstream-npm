@@ -132,6 +132,10 @@ Packer.prototype.applyIgnores = function (entry, partial, entryObj) {
   // special rules.  see below.
   if (entry === 'node_modules' && this.packageRoot) return true
 
+  // do not ignore browserify/webpack entry point if present
+  var browser = this.package && this.package.browser
+  if (browser && path.resolve(this.path, entry) === path.resolve(this.path, browser)) return true
+
   // package.json main file should never be ignored.
   var mainFile = this.package && this.package.main
   if (mainFile && path.resolve(this.path, entry) === path.resolve(this.path, mainFile)) return true
