@@ -26,6 +26,8 @@ function Packer (props) {
   this.bundleLinks = props.bundleLinks
   this.package = props.package
 
+  this._renameGyp = true
+
   // only do the magic bundling stuff for the node_modules folder that
   // lives right next to a package.json file.
   this.bundleMagic = this.parent &&
@@ -306,6 +308,10 @@ var order = [
 ]
 
 Packer.prototype.sort = function (a, b) {
+  // put binding.gyp first
+  if (a === 'binding.gyp') return -1
+  if (b === 'binding.gyp') return 1
+
   for (var i = 0, l = order.length; i < l; i++) {
     var o = order[i]
     if (typeof o === 'string') {
@@ -337,10 +343,14 @@ Packer.prototype.emitEntry = function (entry) {
     entry.path = path.resolve(entry.dirname, entry.basename)
   }
 
-  // all *.gyp files are renamed to binding.gyp for node-gyp
+  // first *.gyp file is renamed to binding.gyp for node-gyp
   // but only when they are in the same folder as a package.json file.
-  if (entry.basename.match(/\.gyp$/) &&
+  // NOTE: sort() will put binding.gyp first so that when it is present
+  // no other *.gyp files will be renamed
+  if (this._renameGyp &&
+      entry.basename.match(/\.gyp$/) &&
       this.entries.indexOf('package.json') !== -1) {
+    this._renameGyp = false
     entry.basename = 'binding.gyp'
     entry.path = path.resolve(entry.dirname, entry.basename)
   }
