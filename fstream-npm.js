@@ -2,6 +2,7 @@ var Ignore = require('fstream-ignore')
 var inherits = require('inherits')
 var path = require('path')
 var fs = require('fs')
+var Minimatch = require('minimatch').Minimatch
 
 module.exports = Packer
 
@@ -216,7 +217,19 @@ Packer.prototype.applyIgnores = function (entry, partial, entryObj) {
   }
   // if (this.bundled) return true
 
-  return Ignore.prototype.applyIgnores.call(this, entry, partial, entryObj)
+  var includeFile = Ignore.prototype.applyIgnores.call(this, entry, partial, entryObj)
+  if (!partial && this.pkgRules && includeFile) {
+    var filesMatched = this.pkgRules.some(function (r) {
+      var ruleMatched = (r.match('/' + entry) || r.match(entry))
+      if (ruleMatched) {
+        r.matchedExistingFile = true
+      }
+      return ruleMatched
+    })
+    return filesMatched
+  }
+
+  return includeFile
 }
 
 Packer.prototype.addIgnoreFiles = function () {
@@ -267,12 +280,14 @@ Packer.prototype.readRules = function (buf, e) {
 
   if (!p.files || !Array.isArray(p.files)) return []
 
-  // ignore everything except what's in the files array.
-  return ['*'].concat(p.files.map(function (f) {
-    return '!' + f
-  })).concat(p.files.map(function (f) {
-    return '!' + f.replace(/\/+$/, '') + '/**'
-  }))
+  var mmopts = { matchBase: true, dot: true }
+  this.pkgRules = p.files.map(function (f) {
+    var f2 = f.replace('\/+$/', '')
+    var globRule = new Minimatch('{' + f2 + ',' + f2 + '/**}')
+    globRule.originalPattern = f
+    return globRule
+  })
+  return []
 }
 
 Packer.prototype.getChildProps = function (stat) {
